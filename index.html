@@ -90,9 +90,15 @@
 </head>
 <body>
 
+<!-- 音乐播放器 -->
+<audio id="bgm" loop preload="auto">
+    <source src="./We Wish You a Merry Christmas.mp3" type="audio/mpeg">
+</audio>
+
 <div id="ui-layer">
     <div class="loader-text">✦ 正在编织星空 ✦</div>
     <div class="instruction">请允许摄像头权限以开启魔法<br>握拳凝聚 · 张手释放</div>
+    <div style="font-size: 12px; color: #ffd700; margin-top: 15px; opacity: 0.8;">♫ 背景音乐已就绪 (点击屏幕播放)</div>
 </div>
 
 <div id="status-indicator">等待摄像头...</div>
@@ -237,6 +243,19 @@
              } else {
                 fullscreenBtn.innerHTML = '✕ 退出全屏';
              }
+        });
+
+        // 音乐播放逻辑
+        const bgm = document.getElementById('bgm');
+        bgm.volume = 0.6;
+        
+        // 尝试自动播放
+        bgm.play().catch(() => {
+            console.log("Autoplay blocked, waiting for interaction");
+            // 如果自动播放失败，点击页面任意位置开始播放
+            document.body.addEventListener('click', () => {
+                bgm.play();
+            }, { once: true });
         });
 
         animate();
