@@ -294,8 +294,8 @@
         
         // 1. 生成主标题 - 平面，下移至 450 (原550)，居中
         const titlePositions = generateFlatText(CONFIG.textString, 0, 450, 0, 0.5);
-        // 2. 生成副标题 - 保持在右侧
-        const subtitlePositions = generateFlatText(CONFIG.subtitleString, 320, 100, 0, 0.4);
+        // 2. 生成副标题 - 保持在右侧 (从320调整到200，向左移动)
+        const subtitlePositions = generateFlatText(CONFIG.subtitleString, 200, 100, 0, 0.4);
         
         // 合并文字数据
         const allTextPositions = [...titlePositions, ...subtitlePositions];
