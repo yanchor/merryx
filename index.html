@@ -143,6 +143,7 @@
         levels: 12, 
         lightLoops: 8, 
         textString: "MERRY CHRISTMAS", 
+        subtitleString: "To 邓诗语", // 新增专属祝语
         colors: {
             leaf: [new THREE.Color(0x0f3d0f), new THREE.Color(0x2d5a27), new THREE.Color(0x5cb85c), new THREE.Color(0x91e884)], 
             star: new THREE.Color(0xffeb3b), 
@@ -154,16 +155,15 @@
     };
 
     let state = {
-        visualState: 'TREE', // TREE, CONDENSE, EXPLODE
+        visualState: 'TREE', 
         explosionStartTime: 0
     };
 
     let scene, camera, renderer, composer;
     let particles, geometry, material;
     let backgroundSnow, snowMaterial; 
-    let treeRotation = 0; // 单独控制树的旋转
+    let treeRotation = 0; 
     
-    // 数据数组
     let originalPositions = []; 
     let randomness = [];
     let particleTypes = []; // 0:Tree, 1:Text
@@ -203,14 +203,18 @@
 
     /**
      * 辅助：生成文字粒子坐标 (弧形)
+     * @param text 文字内容
+     * @param yOffset 垂直高度
+     * @param scale 缩放比例
      */
-    function generateTextPositions(text) {
+    function generateTextPositions(text, yOffset, scale) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 1024;
         canvas.height = 256;
         
-        ctx.font = 'bold 120px "Times New Roman"';
+        // 使用衬线字体，兼容中文
+        ctx.font = 'bold 100px "Times New Roman", "Songti SC", "SimSun", serif';
         ctx.fillStyle = 'white';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -220,10 +224,7 @@
         const positions = [];
         const step = 4; 
         
-        // 调整文字大小和位置
-        const scale = 0.9; // 缩小一点 (原1.5)
-        const radius = 500; // 弧形半径 (原600)
-        const yOffset = 420; 
+        const radius = 500; // 弧形半径
 
         for(let y = 0; y < canvas.height; y += step) {
             for(let x = 0; x < canvas.width; x += step) {
@@ -232,6 +233,7 @@
                     let px = (x - canvas.width/2) * scale;
                     let py = -(y - canvas.height/2) * scale + yOffset;
                     
+                    // 弧形映射
                     const angle = (px / (canvas.width * scale)) * Math.PI * 0.7; 
                     
                     let tx = radius * Math.sin(angle);
@@ -248,8 +250,15 @@
     function createParticles() {
         geometry = new THREE.BufferGeometry();
         
-        const textPositions = generateTextPositions(CONFIG.textString);
-        const textParticleCount = textPositions.length / 3;
+        // 1. 生成主标题粒子 - 上移至 500
+        const titlePositions = generateTextPositions(CONFIG.textString, 500, 0.9);
+        // 2. 生成副标题粒子 - 上移至 400
+        const subtitlePositions = generateTextPositions(CONFIG.subtitleString, 400, 0.5);
+        
+        // 合并文字数据
+        const allTextPositions = [...titlePositions, ...subtitlePositions];
+        const textParticleCount = allTextPositions.length / 3;
+
         const totalParticles = CONFIG.particleCount + textParticleCount;
         
         const posArray = [];
@@ -335,13 +344,14 @@
             randomness[i * 3 + 2] = explosionDir.z;
         }
 
-        // --- 生成文字粒子 ---
+        // --- 生成文字粒子 (标题 + 副标题) ---
         for(let j=0; j<textParticleCount; j++) {
             const idx = CONFIG.particleCount + j;
             
-            const x = textPositions[j*3];
-            const y = textPositions[j*3+1];
-            const z = textPositions[j*3+2];
+            // 修复引用错误：使用 allTextPositions
+            const x = allTextPositions[j*3];
+            const y = allTextPositions[j*3+1];
+            const z = allTextPositions[j*3+2];
             
             originalPositions[idx * 3] = x;
             originalPositions[idx * 3 + 1] = y;
@@ -379,6 +389,9 @@
         scene.add(particles);
     }
 
+    /**
+     * 生成背景雪花
+     */
     function createBackgroundSnow() {
         const geom = new THREE.BufferGeometry();
         const pos = [];
@@ -390,6 +403,7 @@
             const x = (Math.random() - 0.5) * 4000;
             const y = (Math.random() - 0.5) * 4000;
             const z = (Math.random() - 0.5) * 2000 - 1000; 
+            
             pos.push(x, y, z);
             sizes.push(10 + Math.random() * 15);
             speeds.push(1 + Math.random() * 3);
@@ -435,7 +449,6 @@
             }
         }
 
-        // 旋转逻辑：只旋转树，不旋转文字
         if (mode === 'TREE') {
             treeRotation += 0.0015;
         } else {
@@ -459,36 +472,29 @@
                 const oy = originalPositions[iy];
                 const oz = originalPositions[iz];
                 
-                // 判断是否为树粒子 (i < CONFIG.particleCount)
                 if (particleTypes[i] === 0) {
-                    // 对树粒子应用旋转
                     const cosR = Math.cos(treeRotation);
                     const sinR = Math.sin(treeRotation);
-                    
                     tx = ox * cosR - oz * sinR;
                     tz = ox * sinR + oz * cosR;
                     ty = oy;
 
-                    // 风吹效果
                     if (i >= 1700) { 
                         const wind = Math.sin(time * 1.5 + ty * 0.01) * 5;
                         tx += wind;
                         tz += wind * 0.5;
                     }
                 } else {
-                    // 文字粒子：不旋转，保持原始位置
                     tx = ox;
-                    ty = oy + Math.sin(time * 2 + ox * 0.01) * 5; // 微微浮动
+                    ty = oy + Math.sin(time * 2 + ox * 0.01) * 5; 
                     tz = oz;
                 }
             } 
             else if (mode === 'EXPLODE') {
-                // 所有人一起炸裂
                 let bx = originalPositions[ix];
                 let by = originalPositions[iy];
                 let bz = originalPositions[iz];
                 
-                // 如果是树，还是让它基于当前旋转位置炸开，看起来更连贯
                 if (particleTypes[i] === 0) {
                      const cosR = Math.cos(treeRotation);
                      const sinR = Math.sin(treeRotation);
@@ -502,7 +508,6 @@
                 lerpFactor = 0.08;
             } 
             else if (mode === 'CONDENSE') {
-                // 能量球
                 const energyBallRadius = 180; 
                 const isText = particleTypes[i] === 1;
                 const rOffset = isText ? 50 : 0;
