@@ -61,13 +61,43 @@
             border-radius: 15px;
             border: 1px solid rgba(255,255,255,0.1);
         }
+        
+        /* 音乐控制按钮 (右上角) */
+        #music-control {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 20;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+            font-size: 24px;
+            color: #ffd700;
+            animation: rotateMusic 5s linear infinite;
+        }
+        #music-control.paused {
+            animation-play-state: paused;
+            opacity: 0.3;
+        }
+        @keyframes rotateMusic {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
 
+<!-- 本地音乐: We Wish You a Merry Christmas.mp3 -->
+<audio id="bgm" loop preload="auto">
+    <source src="./We Wish You a Merry Christmas.mp3" type="audio/mpeg">
+</audio>
+
+<div id="music-control" onclick="toggleMusic()" style="display:none;">🎵</div>
+
 <div id="ui-layer">
     <div class="loader-text">✦ 正在编织星空 ✦</div>
     <div class="instruction">请允许摄像头权限以开启魔法<br>握拳凝聚 · 张手释放</div>
+    <div style="font-size: 12px; color: #ffd700; margin-top: 15px; opacity: 0.8;">♫ 背景音乐已就绪</div>
 </div>
 
 <div id="status-indicator">等待摄像头...</div>
@@ -156,7 +186,8 @@
 
     let state = {
         visualState: 'TREE', 
-        explosionStartTime: 0
+        explosionStartTime: 0,
+        musicPlaying: false
     };
 
     let scene, camera, renderer, composer;
@@ -198,22 +229,49 @@
         createBackgroundSnow(); 
 
         window.addEventListener('resize', onWindowResize, false);
+        
+        // 尝试自动播放音乐
+        const bgm = document.getElementById('bgm');
+        bgm.volume = 0.6;
+        
+        // 点击页面任何地方开始播放音乐（如果自动播放失败）
+        document.body.addEventListener('click', () => {
+            if (!state.musicPlaying) {
+                toggleMusic();
+            }
+        }, { once: true });
+
         animate();
+    }
+    
+    function toggleMusic() {
+        const bgm = document.getElementById('bgm');
+        const btn = document.getElementById('music-control');
+        
+        if (state.musicPlaying) {
+            bgm.pause();
+            btn.classList.add('paused');
+            state.musicPlaying = false;
+        } else {
+            bgm.play().then(() => {
+                btn.style.display = 'block';
+                btn.classList.remove('paused');
+                state.musicPlaying = true;
+            }).catch(e => {
+                console.log("需要用户交互才能播放音乐");
+            });
+        }
     }
 
     /**
-     * 辅助：生成文字粒子坐标 (弧形)
-     * @param text 文字内容
-     * @param yOffset 垂直高度
-     * @param scale 缩放比例
+     * 辅助：生成平面文字 (用于主标题和副标题)
      */
-    function generateTextPositions(text, yOffset, scale) {
+    function generateFlatText(text, xOffset, yOffset, zOffset, scale) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 1024;
         canvas.height = 256;
         
-        // 使用衬线字体，兼容中文
         ctx.font = 'bold 100px "Times New Roman", "Songti SC", "SimSun", serif';
         ctx.fillStyle = 'white';
         ctx.textAlign = 'center';
@@ -223,24 +281,16 @@
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
         const positions = [];
         const step = 4; 
-        
-        const radius = 500; // 弧形半径
 
         for(let y = 0; y < canvas.height; y += step) {
             for(let x = 0; x < canvas.width; x += step) {
                 const index = (y * canvas.width + x) * 4;
                 if(data[index+3] > 128) {
-                    let px = (x - canvas.width/2) * scale;
+                    // 平面映射
+                    let px = (x - canvas.width/2) * scale + xOffset;
                     let py = -(y - canvas.height/2) * scale + yOffset;
-                    
-                    // 弧形映射
-                    const angle = (px / (canvas.width * scale)) * Math.PI * 0.7; 
-                    
-                    let tx = radius * Math.sin(angle);
-                    let tz = radius * Math.cos(angle) - radius + 50; 
-                    let ty = py;
-
-                    positions.push(tx, ty, tz);
+                    let pz = zOffset;
+                    positions.push(px, py, pz);
                 }
             }
         }
@@ -250,10 +300,10 @@
     function createParticles() {
         geometry = new THREE.BufferGeometry();
         
-        // 1. 生成主标题粒子 - 上移至 500, 缩小比例至 0.6
-        const titlePositions = generateTextPositions(CONFIG.textString, 500, 0.6);
-        // 2. 生成副标题粒子 - 上移至 400, 缩小比例至 0.3
-        const subtitlePositions = generateTextPositions(CONFIG.subtitleString, 400, 0.3);
+        // 1. 生成主标题 - 平面，下移至 450 (原550)，居中
+        const titlePositions = generateFlatText(CONFIG.textString, 0, 450, 0, 0.5);
+        // 2. 生成副标题 - 保持在右侧
+        const subtitlePositions = generateFlatText(CONFIG.subtitleString, 320, 100, 0, 0.4);
         
         // 合并文字数据
         const allTextPositions = [...titlePositions, ...subtitlePositions];
@@ -348,7 +398,6 @@
         for(let j=0; j<textParticleCount; j++) {
             const idx = CONFIG.particleCount + j;
             
-            // 修复引用错误：使用 allTextPositions
             const x = allTextPositions[j*3];
             const y = allTextPositions[j*3+1];
             const z = allTextPositions[j*3+2];
@@ -485,6 +534,7 @@
                         tz += wind * 0.5;
                     }
                 } else {
+                    // 文字粒子：不旋转，保持原始位置
                     tx = ox;
                     ty = oy + Math.sin(time * 2 + ox * 0.01) * 5; 
                     tz = oz;
@@ -568,6 +618,11 @@
             } else if (state.visualState === 'CONDENSE' && state.handOpenness > 0.5) {
                 state.visualState = 'EXPLODE';
                 state.explosionStartTime = Date.now();
+                
+                // 开始播放音乐
+                if (!state.musicPlaying) {
+                    toggleMusic();
+                }
             }
         } else {
             if (state.visualState === 'CONDENSE') state.visualState = 'TREE';
