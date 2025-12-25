@@ -142,30 +142,31 @@
         trunkRadius: 40,  
         levels: 12, 
         lightLoops: 8, 
-        textString: "MERRY CHRISTMAS", // 文字内容
+        textString: "MERRY CHRISTMAS", 
         colors: {
             leaf: [new THREE.Color(0x0f3d0f), new THREE.Color(0x2d5a27), new THREE.Color(0x5cb85c), new THREE.Color(0x91e884)], 
             star: new THREE.Color(0xffeb3b), 
             trunk: new THREE.Color(0x5C4033), 
             ornaments: [new THREE.Color(0xff3333), new THREE.Color(0xffd700), new THREE.Color(0xe0e0e0), new THREE.Color(0x00bfff)],
             lights: [new THREE.Color(0xffaa00), new THREE.Color(0xffecb3)],
-            text: new THREE.Color(0xffd700) // 文字金色
+            text: new THREE.Color(0xffd700) 
         }
     };
 
     let state = {
-        interaction: 'TREE', 
-        handOpenness: 0.5, 
+        visualState: 'TREE', // TREE, CONDENSE, EXPLODE
+        explosionStartTime: 0
     };
 
     let scene, camera, renderer, composer;
     let particles, geometry, material;
     let backgroundSnow, snowMaterial; 
+    let treeRotation = 0; // 单独控制树的旋转
     
     // 数据数组
     let originalPositions = []; 
     let randomness = [];
-    let particleTypes = []; // 0:树/装饰, 1:文字
+    let particleTypes = []; // 0:Tree, 1:Text
     
     function init() {
         const container = document.getElementById('canvas-container');
@@ -217,27 +218,24 @@
         
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
         const positions = [];
-        const step = 4; // 采样密度
+        const step = 4; 
         
-        const scale = 1.5; // 缩放文字大小
-        const radius = 600; // 弧形半径
-        const yOffset = 450; // 高度偏移 (在树上方)
+        // 调整文字大小和位置
+        const scale = 0.9; // 缩小一点 (原1.5)
+        const radius = 500; // 弧形半径 (原600)
+        const yOffset = 420; 
 
         for(let y = 0; y < canvas.height; y += step) {
             for(let x = 0; x < canvas.width; x += step) {
                 const index = (y * canvas.width + x) * 4;
                 if(data[index+3] > 128) {
-                    // 原始平面坐标 (居中)
                     let px = (x - canvas.width/2) * scale;
                     let py = -(y - canvas.height/2) * scale + yOffset;
                     
-                    // 弧形映射: 将 x 映射为角度
-                    // 角度范围：-45度 到 45度
-                    const angle = (px / (canvas.width * scale)) * Math.PI * 0.8; 
+                    const angle = (px / (canvas.width * scale)) * Math.PI * 0.7; 
                     
-                    // 3D 弧形坐标
                     let tx = radius * Math.sin(angle);
-                    let tz = radius * Math.cos(angle) - radius + 50; // 向前一点
+                    let tz = radius * Math.cos(angle) - radius + 50; 
                     let ty = py;
 
                     positions.push(tx, ty, tz);
@@ -247,17 +245,11 @@
         return positions;
     }
 
-    /**
-     * 生成所有粒子 (树 + 文字)
-     */
     function createParticles() {
         geometry = new THREE.BufferGeometry();
         
-        // 1. 获取文字粒子数据
         const textPositions = generateTextPositions(CONFIG.textString);
         const textParticleCount = textPositions.length / 3;
-        
-        // 更新总粒子数 = 树预设 + 文字实际
         const totalParticles = CONFIG.particleCount + textParticleCount;
         
         const posArray = [];
@@ -266,18 +258,15 @@
 
         originalPositions = new Float32Array(totalParticles * 3);
         randomness = new Float32Array(totalParticles * 3);
-        particleTypes = new Uint8Array(totalParticles); // 0:Tree, 1:Text
+        particleTypes = new Uint8Array(totalParticles); 
 
         // --- 生成树粒子 ---
         for (let i = 0; i < CONFIG.particleCount; i++) {
             let x, y, z;
             let color;
             let size;
-            let type = 0; // Tree
 
-            // (树的生成逻辑保持不变)
-            // 1. 树顶星星
-            if (i < 200) {
+            if (i < 200) { // 星星
                 const r = Math.pow(Math.random(), 3) * 45; 
                 const theta = Math.random() * Math.PI * 2;
                 const phi = Math.acos(2 * Math.random() - 1);
@@ -287,8 +276,7 @@
                 color = CONFIG.colors.star;
                 size = 20 + Math.random() * 30; 
             } 
-            // 2. 树干
-            else if (i < 1700) {
+            else if (i < 1700) { // 树干
                 const h = Math.random() * CONFIG.trunkHeight;
                 const r = Math.random() * CONFIG.trunkRadius;
                 const angle = Math.random() * Math.PI * 2;
@@ -298,8 +286,7 @@
                 color = CONFIG.colors.trunk;
                 size = 4 + Math.random() * 4;
             }
-            // 3. 灯带
-            else if (i < 2500) {
+            else if (i < 2500) { // 灯带
                 const t = (i - 1700) / 800; 
                 y = (t - 0.5) * CONFIG.treeHeight;
                 const r = (1 - t) * CONFIG.treeBaseRadius * 1.1; 
@@ -309,8 +296,7 @@
                 color = CONFIG.colors.lights[Math.floor(Math.random() * CONFIG.colors.lights.length)];
                 size = 8 + Math.random() * 6;
             }
-            // 4. 树叶/装饰
-            else {
+            else { // 树叶
                 const levelProgress = Math.pow(Math.random(), 0.8); 
                 const levelIndex = Math.floor(levelProgress * CONFIG.levels);
                 const levelHeight = CONFIG.treeHeight / CONFIG.levels;
@@ -323,7 +309,6 @@
                 const theta = Math.random() * Math.PI * 2 + spiralAngle;
                 let r = maxR * rRatio; y -= r * 0.3; 
                 x = r * Math.cos(theta); z = r * Math.sin(theta);
-
                 const isOrnament = Math.random() > 0.92 && rRatio > 0.6;
                 if (isOrnament) {
                     color = CONFIG.colors.ornaments[Math.floor(Math.random() * CONFIG.colors.ornaments.length)];
@@ -364,14 +349,12 @@
             
             posArray.push(x, y, z);
             
-            // 金色文字，带一点随机亮度
             const colVar = 0.8 + Math.random() * 0.2;
             colArray.push(CONFIG.colors.text.r * colVar, CONFIG.colors.text.g * colVar, CONFIG.colors.text.b * colVar);
             
-            sizeArray.push(6 + Math.random() * 4); // 文字粒子大小
-            particleTypes[idx] = 1; // Mark as text
+            sizeArray.push(5 + Math.random() * 4); 
+            particleTypes[idx] = 1; 
 
-            // 文字的爆炸方向：主要是向上和向前
             randomness[idx * 3] = (Math.random()-0.5) * 1000;
             randomness[idx * 3 + 1] = (Math.random()) * 1000;
             randomness[idx * 3 + 2] = 500 + Math.random() * 500;
@@ -396,9 +379,6 @@
         scene.add(particles);
     }
 
-    /**
-     * 生成背景雪花
-     */
     function createBackgroundSnow() {
         const geom = new THREE.BufferGeometry();
         const pos = [];
@@ -410,7 +390,6 @@
             const x = (Math.random() - 0.5) * 4000;
             const y = (Math.random() - 0.5) * 4000;
             const z = (Math.random() - 0.5) * 2000 - 1000; 
-            
             pos.push(x, y, z);
             sizes.push(10 + Math.random() * 15);
             speeds.push(1 + Math.random() * 3);
@@ -448,14 +427,19 @@
         const sizes = particles.geometry.attributes.size.array;
         const count = positions.length / 3;
 
-        let mode = 'TREE';
-        if (state.handOpenness > 0.8) mode = 'EXPLODE';
-        else if (state.handOpenness < 0.2) mode = 'CONDENSE';
+        let mode = state.visualState;
 
+        if (state.visualState === 'EXPLODE') {
+            if (Date.now() - state.explosionStartTime > 2000) {
+                state.visualState = 'TREE';
+            }
+        }
+
+        // 旋转逻辑：只旋转树，不旋转文字
         if (mode === 'TREE') {
-            particles.rotation.y += 0.0015;
+            treeRotation += 0.0015;
         } else {
-            particles.rotation.y += 0.0005;
+            treeRotation += 0.0005;
         }
 
         for (let i = 0; i < count; i++) {
@@ -466,56 +450,68 @@
             let tx, ty, tz;
             let lerpFactor = 0.06;
 
-            // 灯带闪烁 (仅限树的灯带部分)
             if (i >= 1700 && i < 2500) {
                 sizes[i] = (8 + Math.random() * 6) * (0.8 + 0.4 * Math.sin(time * 3 + i * 0.1));
             }
 
             if (mode === 'TREE') {
-                tx = originalPositions[ix];
-                ty = originalPositions[iy];
-                tz = originalPositions[iz];
+                const ox = originalPositions[ix];
+                const oy = originalPositions[iy];
+                const oz = originalPositions[iz];
                 
-                // 树干和文字 不受风吹 (i < 1700 包含星星和树干)
-                // 文字粒子索引从 CONFIG.particleCount 开始
-                const isTreePart = i < CONFIG.particleCount;
-                
-                // 只有树叶和装饰受风吹
-                if (isTreePart && i >= 1700) { 
-                    const wind = Math.sin(time * 1.5 + ty * 0.01) * 5;
-                    tx += wind;
-                    tz += wind * 0.5;
-                }
-                
-                // 文字粒子：稍微上下浮动
-                if (!isTreePart) {
-                    ty += Math.sin(time * 2 + tx * 0.01) * 5;
+                // 判断是否为树粒子 (i < CONFIG.particleCount)
+                if (particleTypes[i] === 0) {
+                    // 对树粒子应用旋转
+                    const cosR = Math.cos(treeRotation);
+                    const sinR = Math.sin(treeRotation);
+                    
+                    tx = ox * cosR - oz * sinR;
+                    tz = ox * sinR + oz * cosR;
+                    ty = oy;
+
+                    // 风吹效果
+                    if (i >= 1700) { 
+                        const wind = Math.sin(time * 1.5 + ty * 0.01) * 5;
+                        tx += wind;
+                        tz += wind * 0.5;
+                    }
+                } else {
+                    // 文字粒子：不旋转，保持原始位置
+                    tx = ox;
+                    ty = oy + Math.sin(time * 2 + ox * 0.01) * 5; // 微微浮动
+                    tz = oz;
                 }
             } 
             else if (mode === 'EXPLODE') {
                 // 所有人一起炸裂
-                tx = originalPositions[ix] + randomness[ix] * 1.5;
-                ty = originalPositions[iy] + randomness[iy] * 1.5;
-                tz = originalPositions[iz] + randomness[iz] * 1.5;
+                let bx = originalPositions[ix];
+                let by = originalPositions[iy];
+                let bz = originalPositions[iz];
+                
+                // 如果是树，还是让它基于当前旋转位置炸开，看起来更连贯
+                if (particleTypes[i] === 0) {
+                     const cosR = Math.cos(treeRotation);
+                     const sinR = Math.sin(treeRotation);
+                     bx = originalPositions[ix] * cosR - originalPositions[iz] * sinR;
+                     bz = originalPositions[ix] * sinR + originalPositions[iz] * cosR;
+                }
+
+                tx = bx + randomness[ix] * 1.5;
+                ty = by + randomness[iy] * 1.5;
+                tz = bz + randomness[iz] * 1.5;
                 lerpFactor = 0.08;
             } 
             else if (mode === 'CONDENSE') {
-                // 能量球模式
+                // 能量球
                 const energyBallRadius = 180; 
-                
-                // 文字粒子也加入球体旋转，但稍微靠外一点
-                const isText = i >= CONFIG.particleCount;
+                const isText = particleTypes[i] === 1;
                 const rOffset = isText ? 50 : 0;
-
                 const theta = i * 0.05 + time * 3;
                 const phi = i * 0.02; 
-                
                 const r = (energyBallRadius + rOffset) * Math.pow(Math.random(), 0.33); 
-                
                 tx = r * Math.sin(theta) * Math.cos(phi);
                 ty = r * Math.sin(theta) * Math.sin(phi);
                 tz = r * Math.cos(theta);
-                
                 lerpFactor = 0.1;
             }
 
@@ -526,13 +522,10 @@
         particles.geometry.attributes.position.needsUpdate = true;
         particles.geometry.attributes.size.needsUpdate = true;
 
-        // 背景动画
         const bgPos = backgroundSnow.geometry.attributes.position.array;
         const bgSpeed = backgroundSnow.geometry.attributes.velocity.array;
         const bgCount = bgPos.length / 3;
-        
         backgroundSnow.rotation.y -= 0.0002;
-
         for(let i=0; i<bgCount; i++) {
             bgPos[i*3+1] -= bgSpeed[i];
             if (bgPos[i*3+1] < -2000) {
@@ -540,7 +533,6 @@
             }
         }
         backgroundSnow.geometry.attributes.position.needsUpdate = true;
-
         composer.render();
     }
 
@@ -565,14 +557,20 @@
             if (state.handOpenness > 0.8) status.innerText = "状态: 💥 释放";
             else if (state.handOpenness < 0.2) status.innerText = "状态: 🌀 凝聚";
             else status.innerText = "状态: 🎄 生长";
+            
+            if (state.handOpenness < 0.2) {
+                state.visualState = 'CONDENSE';
+            } else if (state.visualState === 'CONDENSE' && state.handOpenness > 0.5) {
+                state.visualState = 'EXPLODE';
+                state.explosionStartTime = Date.now();
+            }
         } else {
-            state.handOpenness = 0.5; 
+            if (state.visualState === 'CONDENSE') state.visualState = 'TREE';
             status.innerText = "寻找手势...";
         }
     }
 
     const videoElement = document.getElementById('video-input');
-    // 使用带版本号的 CDN 确保稳定
     const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`});
     hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
     hands.onResults(onResults);
